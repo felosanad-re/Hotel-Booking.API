@@ -144,6 +144,9 @@ namespace Hotel_Booking.Repositories.Data.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<string>("ReplacedByTokenHash")
                         .HasColumnType("nvarchar(max)");
 
