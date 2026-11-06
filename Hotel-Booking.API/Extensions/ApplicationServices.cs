@@ -3,6 +3,7 @@ using Hotel_booking.Core.Options;
 using Hotel_booking.Core.Services.Contract;
 using Hotel_booking.Core.Services.Contract.TokenServices;
 using Hotel_booking.Core.UnitOfWorks;
+using Hotel_Booking.API.Helper.Mapping;
 using Hotel_Booking.Repositories.GenericRepositories;
 using Hotel_Booking.Repositories.UnitOfWorks;
 using Hotel_Booking.Services;
@@ -26,12 +27,14 @@ namespace Hotel_Booking.API.Extensions
 
             services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepo<>));
 
+            services.AddAutoMapper(typeof(ProfileMapping));
+
             services.AddScoped<IRefreshTokenService, RefreshTokenService>();
             // Add Dependence for CreateTokenService
             services.AddScoped<ICreateTokenService, CreateTokenService>();
             // Add Dependence for Initialization Database
             services.AddScoped<IDbInitialize, DbInitialize>();
-            
+
             // Seeding Admin Options
             services.Configure<SeedAdminOptions>(configuration.GetSection(SeedAdminOptions.SectionName));
 
