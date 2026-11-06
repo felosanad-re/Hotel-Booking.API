@@ -50,6 +50,18 @@ namespace Hotel_Booking.API
 
                 // Add Application Services
                 builder.Services.AddApplicationServices(builder.Configuration);
+
+                var allowedOrigin = builder.Configuration.GetSection("AllowCORS").Get<string[]>();
+                var allowedOringin = builder.Configuration.GetSection("AllowCORS").Get<string[]>();
+                builder.Services.AddCors(action =>
+                {
+                    action.AddPolicy("AngularPolicy", options =>
+                    {
+                        options.WithOrigins(allowedOrigin)
+                        .AllowAnyHeader()
+                        .AllowAnyMethod();
+                    });
+                });
                 #endregion
 
                 var app = builder.Build();
@@ -67,6 +79,10 @@ namespace Hotel_Booking.API
                 }
 
                 app.UseHttpsRedirection();
+
+                app.UseCors("AngularPolicy");
+
+                app.UseAuthentication();
 
                 app.UseAuthorization();
 

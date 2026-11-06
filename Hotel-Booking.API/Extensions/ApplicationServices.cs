@@ -29,6 +29,7 @@ namespace Hotel_Booking.API.Extensions
 
             services.AddAutoMapper(typeof(ProfileMapping));
 
+            // Add Dependence for RefreshTokenService
             services.AddScoped<IRefreshTokenService, RefreshTokenService>();
             // Add Dependence for CreateTokenService
             services.AddScoped<ICreateTokenService, CreateTokenService>();
