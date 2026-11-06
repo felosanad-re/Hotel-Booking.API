@@ -1,4 +1,5 @@
-﻿using Hotel_booking.Core.Models.Accounts;
+﻿using Hotel_booking.Core.Models;
+using Hotel_booking.Core.Models.Accounts;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
@@ -18,5 +19,7 @@ namespace Hotel_Booking.Repositories.Data
             builder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
             base.OnModelCreating(builder);
         }
+
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
     }
 }
