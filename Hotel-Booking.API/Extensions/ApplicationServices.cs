@@ -25,6 +25,8 @@ namespace Hotel_Booking.API.Extensions
 
             services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+            services.AddScoped(typeof(IRedisRepo<>), typeof(RedisReop<>));
+
             services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepo<>));
 
             services.AddAutoMapper(typeof(ProfileMapping));

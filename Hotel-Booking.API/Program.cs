@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using StackExchange.Redis;
 
 namespace Hotel_Booking.API
 {
@@ -45,6 +46,18 @@ namespace Hotel_Booking.API
                 builder.Services.AddDbContext<HotelDbContext>(optinos =>
                 {
                     optinos.UseSqlServer(BuildConnectionString(builder.Configuration));
+                });
+
+                // Add Redis
+                builder.Services
+                    .AddSingleton<IConnectionMultiplexer>(sp =>
+                {
+                    var redisConnctionString = builder.Configuration.GetSection("RedisSettings").GetValue<string>("ConnectionString")
+                    ?? throw new InvalidOperationException("Redis connection string is missing.");
+
+                    var configuration = CreateRedisConfig(redisConnctionString);
+
+                    return ConnectionMultiplexer.Connect(configuration);
                 });
 
                 // Add Application Services
@@ -200,6 +213,60 @@ namespace Hotel_Booking.API
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Creates and configures Redis connection options from the provided connection string.
+        /// Supports both Redis URI format (redis:// or rediss://) and standard connection strings.
+        /// </summary>
+        private static ConfigurationOptions CreateRedisConfig(string redisConnectionString)
+        {
+            // Create Redis configuration with connection and timeout settings.
+            var configuration = new ConfigurationOptions
+            {
+                // Allow the application to start even if Redis is initially unavailable.
+                // StackExchange.Redis will attempt to reconnect in the background.
+                AbortOnConnectFail = false,
+                ConnectRetry = 3,
+                ConnectTimeout = 10000,
+                SyncTimeout = 10000,
+                AsyncTimeout = 10000,
+                // Send KeepAlive messages every 60 seconds to help maintain the connection.
+                KeepAlive = 60
+            };
+
+            // Try to parse the connection string as an absolute URI.
+            // Supports formats such as:
+            // redis://default:password@host:port
+            // rediss://default:password@host:port
+            if (Uri.TryCreate(redisConnectionString, UriKind.Absolute, out var redisUri) && !string.IsNullOrWhiteSpace
+                (redisUri.Host))
+            {
+                // Enable SSL/TLS only when the URI scheme is "rediss".
+                configuration.Ssl = redisUri.Scheme.Equals("rediss", StringComparison.OrdinalIgnoreCase);
+
+                // Set the SSL host name for certificate validation when SSL is enabled.
+                configuration.SslHost = configuration.Ssl ? redisUri.Host : null;
+
+                // Extract username and password from the URI UserInfo section.
+                // Split into two parts only to preserve any additional ':' characters in the password.
+                var userinfoParts = redisUri.UserInfo.Split(':', 2);
+
+                // Set the Redis username if provided; otherwise, use null.
+                configuration.User = string.IsNullOrWhiteSpace(userinfoParts[0]) ? null : userinfoParts[0];
+
+                // Set the Redis password if provided; otherwise, use null.
+                configuration.Password = userinfoParts.Length > 1 ? userinfoParts[1] : null;
+
+                // Add the Redis server host and port to the connection endpoints.
+                configuration.EndPoints.Add(redisUri.Host, redisUri.Port);
+
+                return configuration;
+            }
+
+            configuration.EndPoints.Add(redisConnectionString);
+
+            return configuration;
         }
         #endregion
 
