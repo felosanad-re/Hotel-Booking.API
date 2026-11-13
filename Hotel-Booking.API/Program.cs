@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using System.Threading.Tasks;
 
 namespace Hotel_Booking.API
 {
