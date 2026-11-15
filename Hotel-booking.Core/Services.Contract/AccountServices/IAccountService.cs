@@ -7,7 +7,7 @@ namespace Hotel_booking.Core.Services.Contract.AccountServices
     public interface IAccountService
     {
         // Login Service
-        Task<ApplicationServiceResult<LoginResponse>> LoginAsync(LoginRequest req);
+        Task<ApplicationServiceResult<LoginResult>> LoginAsync(LoginRequest req);
 
         // Register Service
         Task<ApplicationServiceResult<RegisterResponse>> RegisterAsync(RegisterRequest req);

@@ -8,7 +8,11 @@ using Hotel_booking.Core.Options;
 using Hotel_booking.Core.Services.Contract.AccountServices;
 using Hotel_booking.Core.Services.Contract.TokenServices;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;
+using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using System.Text;
 
 namespace Hotel_Booking.Services.AccountServices
 {
@@ -21,13 +25,17 @@ namespace Hotel_Booking.Services.AccountServices
         protected readonly IRefreshTokenService _refreshTokenService;
         protected readonly JwtOptions _jwtOptions;
         protected readonly IMapper _mapper;
+        protected readonly IConfiguration _configuration;
+        protected readonly IEmailSender _emailSender;
 
         public AccountService(UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
             ICreateTokenService createTokenService,
             IRefreshTokenService refreshTokenService,
             IOptions<JwtOptions> jwtOptions,
-            IMapper mapper)
+            IMapper mapper,
+            IConfiguration configuration,
+            IEmailSender emailSender)
         {
             _userManager = userManager;
             _signInManager = signInManager;
@@ -35,11 +43,13 @@ namespace Hotel_Booking.Services.AccountServices
             _refreshTokenService = refreshTokenService;
             _jwtOptions = jwtOptions.Value;
             _mapper = mapper;
+            _configuration = configuration;
+            _emailSender = emailSender;
         }
         #endregion
 
         #region Login Async
-        public async Task<ApplicationServiceResult<LoginResponse>> LoginAsync(LoginRequest req)
+        public async Task<ApplicationServiceResult<LoginResult>> LoginAsync(LoginRequest req)
         {
             req.EmailOrUserName = req.EmailOrUserName.Trim().ToLower();
 
@@ -48,7 +58,7 @@ namespace Hotel_Booking.Services.AccountServices
                 : await _userManager.FindByNameAsync(req.EmailOrUserName);
 
             if (user is null)
-                return ApplicationServiceResult<LoginResponse>.Fail("User not found");
+                return ApplicationServiceResult<LoginResult>.Fail("User not found");
 
             var result = await _signInManager.PasswordSignInAsync(
                 user,
@@ -58,11 +68,11 @@ namespace Hotel_Booking.Services.AccountServices
                 );
 
             if (result.IsLockedOut)
-                return ApplicationServiceResult<LoginResponse>.Fail("Email Is Lockout");
+                return ApplicationServiceResult<LoginResult>.Fail("Email Is Lockout");
             if (result.IsNotAllowed)
-                return ApplicationServiceResult<LoginResponse>.Fail("Email Not Confirm");
+                return ApplicationServiceResult<LoginResult>.Fail("Email Not Confirm");
             if (!result.Succeeded)
-                return ApplicationServiceResult<LoginResponse>.Fail("Email Or Password Is Incorrect");
+                return ApplicationServiceResult<LoginResult>.Fail("Email Or Password Is Incorrect");
 
             // Create Token
             var token = await _createTokenService.CreateTokenAsync(user);
@@ -73,9 +83,6 @@ namespace Hotel_Booking.Services.AccountServices
             // Get user Role
             var roles = await _userManager.GetRolesAsync(user);
 
-            // Call Set Refresh Token To Generate new Refresh Token
-            SetRefreshToken(refreshToken);
-
             var res = new LoginResponse
             {
                 AccessToken = token,
@@ -84,7 +91,11 @@ namespace Hotel_Booking.Services.AccountServices
                 Roles = roles,
                 UserName = user.UserName!
             };
-            return ApplicationServiceResult<LoginResponse>.Success(res, "LogIn Succeeded");
+            return ApplicationServiceResult<LoginResult>.Success(new LoginResult
+            {
+                RefreshToken = refreshToken,
+                Response = res
+            }, "LogIn Succeeded");
         }
         #endregion
 
@@ -123,14 +134,22 @@ namespace Hotel_Booking.Services.AccountServices
             // Add Roles
             await _userManager.AddToRoleAsync(user, Roles.Visitor);
 
+            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var frontUrl = _configuration["FrontEndUrl"];
+            var routeUrl = _configuration["FrontEndRoute:ConfirmAccount"];
+            var link = $"{frontUrl}/{routeUrl}/{user.Id}/{encodedToken}";
 
-            return ApplicationServiceResult<RegisterResponse>.Success("Account Created Succeeded");
+            // Send Email
+            await _emailSender.SendEmailAsync(
+                user.Email,
+                "Confirm Your Account",
+                $"<p>To Confirm your account click <a href='{link}'>Here</a></p>");
+
+            var data = _mapper.Map<RegisterResponse>(user);
+            return ApplicationServiceResult<RegisterResponse>.Success(data, "Account Created Succeeded You Received Confirm Email");
         }
         #endregion
 
-        private void SetRefreshToken(string refreshToken)
-        {
-            throw new NotImplementedException();
-        }
     }
 }
