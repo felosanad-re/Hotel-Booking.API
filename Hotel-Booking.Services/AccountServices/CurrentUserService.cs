@@ -13,6 +13,9 @@ namespace Hotel_Booking.Services.AccountServices
             _httpContextAccessor = httpContextAccessor;
         }
 
+        private ClaimsPrincipal? User =>
+            _httpContextAccessor.HttpContext?.User;
+
         public string? UserId =>
             _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
 
