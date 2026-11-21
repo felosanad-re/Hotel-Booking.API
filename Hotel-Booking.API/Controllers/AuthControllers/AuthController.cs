@@ -29,6 +29,27 @@ namespace Hotel_Booking.API.Controllers.AuthControllers
             return Ok(res.Data.Response);
         }
 
+        [HttpPost("refresh-token")] // Post: /api/Auth/refresh-token
+        public async Task<IActionResult> RefreshToken()
+        {
+            var refreshToken = Request.Cookies["refreshToken"];
+            if (string.IsNullOrWhiteSpace(refreshToken))
+                return Unauthorized(new ErrorResponse(401));
+
+            var res = await _accountService.RefreshTokenAsync(refreshToken);
+
+            if(!res.Succeed || res.Data is null)
+            {
+                Response.Cookies.Delete("refreshToken");
+                return Unauthorized(new ErrorResponse(401));
+            }
+
+            Response.SetRefreshToken(res.Data.RefreshToken);
+
+            return Ok(res.Data.Response);
+        }
+
+
         [HttpPost("Register")] // Post: /api/Auth/Register
         public async Task<ActionResult<ApplicationServiceResult<RegisterResponse>>> Register([FromBody] RegisterRequest register)
         {

@@ -114,6 +114,22 @@ namespace Hotel_Booking.Services.TokenServices
             refreshToken.RevokedAt = DateTime.UtcNow;
 
             await _unitOfWork.CompleteAsync();
+        
+        #endregion
+
+        #region Get User Id By Refresh Token
+        public async Task<string?> GetUserIdByRefreshTokenAsync(string token)
+        {
+            var hashToken = HashToken(token);
+
+            var spec = new RefreshTokenSpec(token);
+
+            var refreshToken = await _unitOfWork.CreateRepository<RefreshToken>().GetAsyncSpec(spec);
+
+            if(refreshToken is null || !refreshToken.IsActive)
+                return null;
+
+            return refreshToken.UserId;
         }
         #endregion
     }
