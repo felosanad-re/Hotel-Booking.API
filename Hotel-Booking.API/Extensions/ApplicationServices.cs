@@ -1,6 +1,7 @@
 ﻿using Hotel_booking.Core.GenericRepository;
 using Hotel_booking.Core.Options;
 using Hotel_booking.Core.Services.Contract;
+using Hotel_booking.Core.Services.Contract.AccountServices;
 using Hotel_booking.Core.Services.Contract.TokenServices;
 using Hotel_booking.Core.UnitOfWorks;
 using Hotel_Booking.API.Helper.EmailSend;
@@ -8,6 +9,7 @@ using Hotel_Booking.API.Helper.Mapping;
 using Hotel_Booking.Repositories.GenericRepositories;
 using Hotel_Booking.Repositories.UnitOfWorks;
 using Hotel_Booking.Services;
+using Hotel_Booking.Services.AccountServices;
 using Hotel_Booking.Services.TokenServices;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity.UI.Services;
@@ -30,6 +32,8 @@ namespace Hotel_Booking.API.Extensions
             services.AddScoped(typeof(IRedisRepo<>), typeof(RedisReop<>));
 
             services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepo<>));
+
+            services.AddScoped<ICurrentUserService, CurrentUserService>();
 
             services.AddAutoMapper(typeof(ProfileMapping));
             services.AddTransient<IEmailSender, EmailSender>();
