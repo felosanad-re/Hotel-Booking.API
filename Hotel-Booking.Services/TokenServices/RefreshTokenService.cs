@@ -1,5 +1,5 @@
 ﻿using Hotel_booking.Core.Models;
-using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse;
+using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse.RefreshToken;
 using Hotel_booking.Core.Options;
 using Hotel_booking.Core.Services.Contract.TokenServices;
 using Hotel_booking.Core.Specifications.RefreshTokenSpecifications;
@@ -30,7 +30,7 @@ namespace Hotel_Booking.Services.TokenServices
         }
         #endregion
 
-        #region 2. Hash token before saving=
+        #region 2. Hash token before saving
         private string HashToken(string token)
         {
             var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(token));
@@ -62,20 +62,21 @@ namespace Hotel_Booking.Services.TokenServices
         #endregion
 
         #region 4. Validate and rotate refresh token
-        public async Task<RefreshTokenRotationResult> RotateRefreshTokenAsync(string token)
+        public async Task<RefreshTokenRotationResult?> RotateRefreshTokenAsync(string token)
         {
             var hashToken = HashToken(token);
 
-            var spec = new RefreshTokenSpec(token);
+            // 2. Find token in database Search by HashToken
+            var spec = new RefreshTokenSpec(hashToken);
             var tokenRepo = _unitOfWork.CreateRepository<RefreshToken>();
             var oldToken = await tokenRepo.GetAsyncSpec(spec);
 
             if (oldToken == null || !oldToken.IsActive)
                 return null;
 
-            var newRefteshToken = GenerateToken();
+            var newRefreshToken = GenerateToken();
 
-            var newHashToken = HashToken(newRefteshToken);
+            var newHashToken = HashToken(newRefreshToken);
 
             oldToken.RevokedAt = DateTime.UtcNow;
 
@@ -94,7 +95,7 @@ namespace Hotel_Booking.Services.TokenServices
 
             return new RefreshTokenRotationResult
             {
-                RefreshToken = newRefteshToken,
+                RefreshToken = newRefreshToken,
                 User = oldToken.User
             };
         }
@@ -105,7 +106,7 @@ namespace Hotel_Booking.Services.TokenServices
         {
             var hashToken = HashToken(token);
 
-            var spec = new RefreshTokenSpec(token);
+            var spec = new RefreshTokenSpec(hashToken);
             var refreshToken = await _unitOfWork.CreateRepository<RefreshToken>().GetAsyncSpec(spec);
             if(refreshToken is null || !refreshToken.IsActive)
                 return;

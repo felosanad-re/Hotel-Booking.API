@@ -1,6 +1,6 @@
 ﻿using Hotel_booking.Core.Models.Accounts;
 
-namespace Hotel_booking.Core.ModelsDTO.ModelsDtoResponse
+namespace Hotel_booking.Core.ModelsDTO.ModelsDtoResponse.RefreshToken
 {
     public class RefreshTokenRotationResult
     {

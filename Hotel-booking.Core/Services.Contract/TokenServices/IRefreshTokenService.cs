@@ -1,4 +1,4 @@
-﻿using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse;
+﻿using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse.RefreshToken;
 
 namespace Hotel_booking.Core.Services.Contract.TokenServices
 {
@@ -6,7 +6,7 @@ namespace Hotel_booking.Core.Services.Contract.TokenServices
     {
         Task<string> CreateRefreshTokenAsync(string userId);
 
-        Task<RefreshTokenRotationResult> RotateRefreshTokenAsync(string token);
+        Task<RefreshTokenRotationResult?> RotateRefreshTokenAsync(string token);
 
         Task RevokeRefreshTokenAsync(string token);
     }
