@@ -4,6 +4,7 @@ using Hotel_booking.Core.Models.Accounts;
 using Hotel_booking.Core.ModelsDTO;
 using Hotel_booking.Core.ModelsDTO.ModelsDtoRequest.AccountServices;
 using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse.AccountDTO;
+using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse.RefreshToken;
 using Hotel_booking.Core.Options;
 using Hotel_booking.Core.Services.Contract.AccountServices;
 using Hotel_booking.Core.Services.Contract.TokenServices;
@@ -103,6 +104,46 @@ namespace Hotel_Booking.Services.AccountServices
         public Task<ApplicationServiceResult<bool>> LogOutAsync(string userId)
         {
             throw new NotImplementedException();
+        }
+        #endregion
+
+        #region RefreshToken Async
+        public async Task<ApplicationServiceResult<RefreshTokenResult>> RefreshTokenAsync(string refreshToken)
+        {
+            // 1. Validate old refresh token and rotate it
+            var rotationResult = await _refreshTokenService.RotateRefreshTokenAsync(refreshToken);
+            if (rotationResult is null)
+                return ApplicationServiceResult<RefreshTokenResult>.Fail("Invalid or expired refresh token");
+
+            // Get User From rotation result
+            var user = rotationResult.User;
+
+            // check if user is exist
+            if (user is null)
+                return ApplicationServiceResult<RefreshTokenResult>.Fail("User Not Found");
+
+            // Check if user is lockout
+            if (await _userManager.IsLockedOutAsync(user))
+                return ApplicationServiceResult<RefreshTokenResult>.Fail("Account is locked out");
+
+            // generate new access token
+            var accessToken = await _createTokenService.CreateTokenAsync(user);
+
+            var roles = await _userManager.GetRolesAsync(user);
+
+            var response = new RefreshTokenResponse
+            {
+                AccessToken = accessToken,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(_jwtOptions.AccessTokenExpirationMinutes)
+            };
+
+            var result = new RefreshTokenResult
+            {
+                RefreshToken = rotationResult.RefreshToken,
+                Response = response
+            };
+
+            return ApplicationServiceResult<RefreshTokenResult>.Success(result, "Token refreshed successfully");
         }
         #endregion
 
