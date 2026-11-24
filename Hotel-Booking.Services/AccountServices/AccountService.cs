@@ -1,7 +1,9 @@
 ﻿using AutoMapper;
 using Hotel_booking.Core;
+using Hotel_booking.Core.GenericRepository;
 using Hotel_booking.Core.Models.Accounts;
 using Hotel_booking.Core.ModelsDTO;
+using Hotel_booking.Core.ModelsDTO.ModelsDtoRequest.AccountDTO;
 using Hotel_booking.Core.ModelsDTO.ModelsDtoRequest.AccountServices;
 using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse.AccountDTO;
 using Hotel_booking.Core.ModelsDTO.ModelsDtoResponse.RefreshToken;
@@ -13,6 +15,7 @@ using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Hotel_Booking.Services.AccountServices
@@ -28,6 +31,7 @@ namespace Hotel_Booking.Services.AccountServices
         protected readonly IMapper _mapper;
         protected readonly IConfiguration _configuration;
         protected readonly IEmailSender _emailSender;
+        protected readonly IRedisRepo<OTPUser> _redisRepo;
 
         public AccountService(UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager,
@@ -101,9 +105,14 @@ namespace Hotel_Booking.Services.AccountServices
         #endregion
 
         #region LogOut Async
-        public Task<ApplicationServiceResult<bool>> LogOutAsync(string userId)
+        public async Task<ApplicationServiceResult<bool>> LogOutAsync(string refreshToken)
         {
-            throw new NotImplementedException();
+            if(string.IsNullOrWhiteSpace(refreshToken))
+                return ApplicationServiceResult<bool>.Fail("refresh token is required");
+
+            await _refreshTokenService.RevokeRefreshTokenAsync(refreshToken);
+
+            return ApplicationServiceResult<bool>.Success(true, "Logged out successfully");
         }
         #endregion
 
@@ -190,7 +199,178 @@ namespace Hotel_Booking.Services.AccountServices
             var data = _mapper.Map<RegisterResponse>(user);
             return ApplicationServiceResult<RegisterResponse>.Success(data, "Account Created Succeeded You Received Confirm Email");
         }
+
+        public async Task<ApplicationServiceResult<bool>> ConfirmAccount(ConfirmAccountRequest req)
+        {
+            var user = await _userManager.FindByIdAsync(req.UserId);
+            if (user == null) return ApplicationServiceResult<bool>.Fail("Invalid Account");
+
+            // Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(req.Token));
+            var decodedToken = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(req.Token));
+            var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
+            if (!result.Succeeded) return ApplicationServiceResult<bool>.Fail("Invalid or expired token");
+
+            return ApplicationServiceResult<bool>.Success(true, "Account activated Succeeded");
+        }
         #endregion
 
+        #region CheckAccountAsync
+        public async Task<ApplicationServiceResult<CheckAccountResponse>> CheckAccountAsync(CheckAccountRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.UserNameOrEmail))
+                return ApplicationServiceResult<CheckAccountResponse>.Fail("UserNameOrEmail is required");
+
+            var user = req.UserNameOrEmail.Contains('@') ?
+            await _userManager.FindByEmailAsync(req.UserNameOrEmail) :
+            await _userManager.FindByNameAsync(req.UserNameOrEmail);
+
+            if (user == null) return ApplicationServiceResult<CheckAccountResponse>.Fail("User Not Found");
+
+            var token = await GenerateAndStoreOTPAsync(user.Id, user.Email!);
+
+            var result = new CheckAccountResponse()
+            {
+                Exists = true,
+                CanResetPassword = user.EmailConfirmed,
+                RequiresOTP = true,
+                Token = token
+            };
+            return ApplicationServiceResult<CheckAccountResponse>.Success(result, "Email Is Exist You Received OTP");
+        }
+        #endregion
+
+        #region CheckOTP
+        public async Task<ApplicationServiceResult<CheckOTPResponse>> CheckOTP(CheckOTPRequest req)
+        {
+            var key = $"OTP:{req.Token}";
+            var userOTP = await _redisRepo.GetKeyAsync(key);
+
+            if (userOTP == null)
+                return ApplicationServiceResult<CheckOTPResponse>.Fail("Invalid or expired token, please request a new OTP");
+
+            if (userOTP.IsExpired(TimeSpan.FromMinutes(5)))
+            {
+                await _redisRepo.DeleteKeyAsync(key);
+                return ApplicationServiceResult<CheckOTPResponse>.Fail("OTP has expired, please request a new one");
+            }
+
+            if (userOTP.OTP != req.OTP)
+                return ApplicationServiceResult<CheckOTPResponse>.Fail("Invalid OTP code");
+
+            // Mark as verified and update in Redis
+            userOTP.IsVerified = true;
+            await _redisRepo.SetKeyAsync(key, userOTP, TimeSpan.FromMinutes(10));
+
+            var result = new CheckOTPResponse
+            {
+                IsValid = true,
+                Token = userOTP.Token
+            };
+            return ApplicationServiceResult<CheckOTPResponse>.Success(result, "OTP verified successfully");
+        }
+        #endregion
+
+        #region ResetPasswordAsync
+        public async Task<ApplicationServiceResult<ResetPasswordResponse>> ResetPasswordAsync(ResetPasswordRequest req)
+        {
+            var key = $"OTP:{req.Token}";
+            var userOTP = await _redisRepo.GetKeyAsync(key);
+
+            if (userOTP == null)
+                return ApplicationServiceResult<ResetPasswordResponse>.Fail("Invalid or expired token, please start over");
+
+            if (!userOTP.IsVerified)
+                return ApplicationServiceResult<ResetPasswordResponse>.Fail("OTP not verified, please verify your OTP first");
+
+            var user = await _userManager.FindByIdAsync(userOTP.UserId);
+            if (user == null)
+                return ApplicationServiceResult<ResetPasswordResponse>.Fail("User not found");
+
+            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, resetToken, req.Password);
+
+            if (!result.Succeeded)
+                return ApplicationServiceResult<ResetPasswordResponse>.Fail(string.Join(", ", result.Errors.Select(e => e.Description)));
+
+            // Clean up OTP from Redis after successful reset
+            await _redisRepo.DeleteKeyAsync(key);
+
+            var response = new ResetPasswordResponse
+            {
+                UserId = user.Id,
+                Email = user.Email!
+            };
+            return ApplicationServiceResult<ResetPasswordResponse>.Success(response, "Password reset successfully");
+        }
+
+        #endregion
+
+        #region Check Email Confirmation
+        public async Task<ApplicationServiceResult<CheckEmailConfirmationResponse>> CheckEmailConfirmationAsync(CheckEmailConfirmationRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.UserNameOrEmail))
+                return ApplicationServiceResult<CheckEmailConfirmationResponse>.Fail("Email is required");
+
+            var user = await _userManager.FindByEmailAsync(req.UserNameOrEmail.Trim().ToLower());
+            if (user == null)
+                return ApplicationServiceResult<CheckEmailConfirmationResponse>.Fail("Account not found");
+
+            // If email is not confirmed, send confirmation email
+            if (!user.EmailConfirmed)
+            {
+                var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+                var frontUrl = _configuration["FrontEndUrl"];
+                var routeUrl = _configuration["FrontEndRoute:ConfirmAccount"];
+                var link = $"{frontUrl}/{routeUrl}/{user.Id}/{encodedToken}";
+
+                await _emailSender.SendEmailAsync(
+                    user.Email,
+                    "Confirm Your Account",
+                    $"<p>To Confirm your account click <a href='{link}'>Here</a></p>"
+                );
+            }
+
+            var response = new CheckEmailConfirmationResponse
+            {
+                Exists = true,
+                IsConfirmed = user.EmailConfirmed
+            };
+
+            var message = user.EmailConfirmed
+                ? "Email is confirmed"
+                : "Confirmation email has been sent";
+
+            return ApplicationServiceResult<CheckEmailConfirmationResponse>.Success(response, message);
+        }
+        #endregion
+
+        #region Private Helper Methods
+        private async Task<string> GenerateAndStoreOTPAsync(string userId, string email)
+        {
+            var OTP = RandomNumberGenerator.GetInt32(100000, 999999); // 6 Digits
+            var token = Guid.NewGuid().ToString("N");
+            var userOTP = new OTPUser
+            {
+                OTP = OTP,
+                Token = token,
+                UserId = userId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Set OTP In Redis using Token as key (so CheckOTP can look it up)
+            var key = $"OTP:{token}";
+            await _redisRepo.SetKeyAsync(key, userOTP, TimeSpan.FromMinutes(5));
+
+            var htmlMessage = $@"
+                <h2>Password Reset Request</h2>
+                <p>Your OTP Code: <strong>{OTP}</strong></p>
+                <p><small>This code expires in 5 minutes.</small></p>";
+
+            await _emailSender.SendEmailAsync(email, "Forget Password", htmlMessage);
+
+            return token;
+        }
+        #endregion
     }
 }
