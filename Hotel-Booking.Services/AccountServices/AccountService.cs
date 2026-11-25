@@ -51,7 +51,6 @@ namespace Hotel_Booking.Services.AccountServices
             _mapper = mapper;
             _configuration = configuration;
             _emailSender = emailSender;
-            _currentUserService = currentUserService;
         }
         #endregion
 
