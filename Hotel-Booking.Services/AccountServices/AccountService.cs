@@ -40,7 +40,8 @@ namespace Hotel_Booking.Services.AccountServices
             IOptions<JwtOptions> jwtOptions,
             IMapper mapper,
             IConfiguration configuration,
-            IEmailSender emailSender)
+            IEmailSender emailSender,
+            ICurrentUserService currentUserService)
         {
             _userManager = userManager;
             _signInManager = signInManager;
@@ -50,6 +51,7 @@ namespace Hotel_Booking.Services.AccountServices
             _mapper = mapper;
             _configuration = configuration;
             _emailSender = emailSender;
+            _currentUserService = currentUserService;
         }
         #endregion
 
@@ -119,26 +121,27 @@ namespace Hotel_Booking.Services.AccountServices
         #region RefreshToken Async
         public async Task<ApplicationServiceResult<RefreshTokenResult>> RefreshTokenAsync(string refreshToken)
         {
-            // 1. Validate old refresh token and rotate it
-            var rotationResult = await _refreshTokenService.RotateRefreshTokenAsync(refreshToken);
-            if (rotationResult is null)
+
+            var userId = await _refreshTokenService.GetUserIdByRefreshTokenAsync(refreshToken);
+            if (userId is null)
                 return ApplicationServiceResult<RefreshTokenResult>.Fail("Invalid or expired refresh token");
 
-            // Get User From rotation result
-            var user = rotationResult.User;
-
-            // check if user is exist
-            if (user is null)
-                return ApplicationServiceResult<RefreshTokenResult>.Fail("User Not Found");
+            // Get User From Identity
+            var user = await _userManager.FindByIdAsync(userId);
+            if(user is null)
+                return ApplicationServiceResult<RefreshTokenResult>.Fail("User not found");
 
             // Check if user is lockout
             if (await _userManager.IsLockedOutAsync(user))
                 return ApplicationServiceResult<RefreshTokenResult>.Fail("Account is locked out");
 
+            // 1. Validate old refresh token and rotate it
+            var rotationResult = await _refreshTokenService.RotateRefreshTokenAsync(refreshToken);
+            if (rotationResult is null)
+                return ApplicationServiceResult<RefreshTokenResult>.Fail("Invalid or expired refresh token");
+
             // generate new access token
             var accessToken = await _createTokenService.CreateTokenAsync(user);
-
-            var roles = await _userManager.GetRolesAsync(user);
 
             var response = new RefreshTokenResponse
             {
