@@ -107,28 +107,6 @@ namespace Hotel_Booking.API.Controllers.AuthControllers
         }
         #endregion
 
-        #region Register
-        [HttpPost("Register")] // POST: /api/Account/Register
-        [ProducesResponseType(StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status409Conflict)]
-        public async Task<ActionResult<ApplicationServiceResult<RegisterResponse>>> CreateAccount([FromBody] RegisterRequest req)
-        {
-            var result = await _accountService.RegisterAsync(req);
-            if (!result.Succeed)
-            {
-                if (result.Message?.Contains("Already Exist", StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    return Conflict(new { message = result.Message, error = result.Errors });
-                }
-                ;
-
-                return BadRequest(new { message = result.Message, errors = result.Errors });
-            }
-            return Ok(result);
-        }
-        #endregion
-
         #region Confirm
         [HttpGet("Confirm")] // GET: /api/Account/Confirm
         public async Task<ActionResult<ApplicationServiceResult<bool>>> Confirm([FromQuery] ConfirmAccountRequest request)
